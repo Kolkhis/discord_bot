@@ -262,7 +262,10 @@ async def get_state(ctx: commands.Context) -> None:
 
 async def main() -> None:
     async with bot:
-        await bot.start(BOT_TOKEN)
+        if BOT_TOKEN:
+            await bot.start(BOT_TOKEN)
+        else:
+            raise Exception("No bot token provided.")
 
 
 if __name__ == "__main__":

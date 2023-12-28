@@ -90,18 +90,6 @@ async def skip(ctx: commands.Context) -> None:
     await ctx.message.add_reaction("\u2705")
 
 
-# @bot.command()
-# async def nightcore(ctx: commands.Context) -> None:
-#     """Set the filter to a nightcore style."""
-#     player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
-#     if not player:
-#         return
-#     filters: wavelink.Filters = player.filters
-#     filters.timescale.set(pitch=1.2, speed=1.2, rate=1)
-#     await player.set_filters(filters)
-#     await ctx.message.add_reaction("\u2705")
-
-
 @bot.command(name="toggle", aliases=["pause", "resume", "stop", "start", "t", "⏹️"])
 async def pause_resume(ctx: commands.Context) -> None:
     """`:pause` / `:resume` - Pause or resume playback."""
@@ -142,7 +130,7 @@ async def volume(ctx: commands.Context, value: int | None = None) -> None:
     await ctx.message.add_reaction("\u2705")
 
 
-@bot.command(aliases=["dc", "quit", "exit", "q"])
+@bot.command(name="disconnect", aliases=["dc", "quit", "exit", "q"])
 async def disconnect(ctx: commands.Context) -> None:
     """`:quit` / `:dc` / `:exit` - Disconnect the player."""
     player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
@@ -203,7 +191,6 @@ async def toggle_autoplay(ctx: commands.Context, value: str | None = None) -> No
             `off`: play songs, but don't fetch recommendations
             `disabled`: Don't autoplay anything, even playlists.
             """
-            # Enum members:\nOn: {values['on']}\nOff: {values['off']}\nDisabled: {values['disabled']}
         else:
             embed.description = f"""
             Possible values: `on`, `off`, `disabled`\n
@@ -212,7 +199,6 @@ async def toggle_autoplay(ctx: commands.Context, value: str | None = None) -> No
             `off`: Play songs, but don't fetch recommendations
             `disabled`: Don't autoplay anything, even playlists.
             """
-            # Enum members:\nOn: {values['on']}\nOff: {values['off']}\nDisabled: {values['disabled']}
         embed.set_footer(text="Toggle autoplay with :autoplay (on/off)") 
         await ctx.message.add_reaction(u"🙃")
         await ctx.send(embed=embed)

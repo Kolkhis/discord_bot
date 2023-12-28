@@ -11,7 +11,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot: Bot = Bot()
 
 
-@bot.command(aliases=["p", "add", "a"])
+@bot.command(aliases=["p", "add", "a", "addsong"])
 async def play(ctx: commands.Context, *, query: str) -> None:
     """`:play (URL or search)` - Play song/playlist URL, or search for it\n"""
     if not ctx.guild:
@@ -102,11 +102,12 @@ async def skip(ctx: commands.Context) -> None:
 #     await ctx.message.add_reaction("\u2705")
 
 
-@bot.command(name="toggle", aliases=["pause", "resume", "stop", "start", "t"])
+@bot.command(name="toggle", aliases=["pause", "resume", "stop", "start", "t", "⏹️"])
 async def pause_resume(ctx: commands.Context) -> None:
     """`:pause` / `:resume` - Pause or resume playback."""
     player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
     if not player:
+        await ctx.send("Not connected to a voice channel.")
         return
     await player.pause(not player.paused)
     await ctx.message.add_reaction("\u2705")
@@ -118,6 +119,18 @@ async def volume(ctx: commands.Context, value: int | None = None) -> None:
     player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
     if not player:
         return
+    if bot.is_owner(ctx.author):
+        match value:
+            case None:
+                await ctx.send(f"debug: Current volume: {player.volume}")
+                return await ctx.message.add_reaction("🙃")
+            case value if value <= 1000:
+                await player.set_volume(value)
+                await ctx.send(f"debug: Volume set to {player.volume}")
+                return await ctx.message.add_reaction("🙃")
+            case _:
+                await ctx.send("debug: Enter a value between 1 and 1000.")
+                return await ctx.message.add_reaction("🙃")
     match value:
         case None:
             await ctx.send(f"The current volume is {player.volume}")
@@ -141,35 +154,71 @@ async def disconnect(ctx: commands.Context) -> None:
 
 @bot.command(name="cmd", aliases=["commands", "cmds", "h", "man"])
 async def cmd(ctx: commands.Context) -> None:
-    """`:help` / `:h` - Get help: Display a list of commands."""
-    player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
+    """`:cmd` / `:h` - Get help: Display a list of commands."""
+    # player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
     author: str = ctx.author.name
     embed: discord.Embed = discord.Embed(title="Help")
     embed.description = f"""
         SUP {author}, I'm a str8 up badass music bot. Here are my commands:\n
-        `:commands` / `:cmds` / `:h` - Display this help message\n
-        `:play (URL or search)` / `:add ...` - Play the song/playlist at the given URL, or search for it\n
-        `:volume (0-50)` - Change the volume of the player\n
-        `:pause`  - Pause the music player \n
-        `:resume` - Resume the music player\n
-        `:skip` - Skip the current song\n
-        `:autoplay (on/off)` - Toggle autoplay\n
-        `:queue` / `:vq` - Show the current queue\n
+        * `:commands` - Display this help message
+            \t* Aliases - `:h`, `:cmd`, `:cmds`, `:man`\n
+        * `:play (URL or search)`- Play the song/playlist at the given URL, or search for it
+            \t* Aliases - `:p`, `:add`, `:a`\n
+        * `:volume (0-50)` - Change the volume of the player
+            \t* Aliases - `:vol`\n
+        * `:pause` - Pause the music player 
+            \t* Aliases - `:stop`, `:toggle`, `:t`\n
+        * `:resume` - Resume the music player
+            \t* Aliases - `:start`, `:toggle`, `:t`\n
+        * `:skip` - Skip the current song
+            \t* Aliases - `:s`, `:sk`, `:next`, `:n`\n
+        * `:autoplay (on/off)` - Toggle autoplay
+            \t* Aliases - `:ap`, `:auto`, `:au`\n
+        * `:queue` - Show the current queue
+            \t* Aliases - `:vq`, `:list`, `:songs`, `:playlist`\n
+        * `:quit` - Disconnect the bot from the voice channel
+            \t* Aliases - `:q`, `:disconnect`, `:dc`\n
     """
     await ctx.message.add_reaction("🙃")
     await ctx.send(embed=embed)
-    # await player.home.send(embed=embed)
 
 
-@bot.command(name="autoplay", aliases=["ap", "auto"])
-async def toggle_autoplay(ctx: commands.Context, value: str) -> None:
+@bot.command(name="autoplay", aliases=["ap", "auto", "au"])
+async def toggle_autoplay(ctx: commands.Context, value: str | None = None) -> None:
     """`:autoplay (on/off)` / `:ap (on/off)` - Toggle autoplay."""
     player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
+    if not value or value.strip() == '':
+        values = {
+            "on": wavelink.AutoPlayMode.enabled.value,          # 0
+            "off": wavelink.AutoPlayMode.partial.value,         # 1
+            "disabled": wavelink.AutoPlayMode.disabled.value,   # 2
+        }
+        embed: discord.Embed = discord.Embed(title="Autoplay")
+        if player:
+            embed.description = f"""
+            Autoplay is currently set to {player.autoplay}\n
+            Possible values: `on`, `off`, `disabled`\n
+            **Note**: `disabled` will disable playlists from autoplaying.
+            `on`: play songs and fetch recommendations
+            `off`: play songs, but don't fetch recommendations
+            `disabled`: Don't autoplay anything, even playlists.
+            """
+            # Enum members:\nOn: {values['on']}\nOff: {values['off']}\nDisabled: {values['disabled']}
+        else:
+            embed.description = f"""
+            Possible values: `on`, `off`, `disabled`\n
+            **Note**: `disabled` will disable playlists from autoplaying.
+            `on`: Play songs and fetch recommendations
+            `off`: Play songs, but don't fetch recommendations
+            `disabled`: Don't autoplay anything, even playlists.
+            """
+            # Enum members:\nOn: {values['on']}\nOff: {values['off']}\nDisabled: {values['disabled']}
+        embed.set_footer(text="Toggle autoplay with :autoplay (on/off)") 
+        await ctx.message.add_reaction(u"🙃")
+        await ctx.send(embed=embed)
+        return
     if not player:
         return
-    # enabled =  play songs and fetch recommendations
-    # partial =  play songs, but don't fetch recommendations
-    # disabled = do nothing
     match value:
         case "on":
             player.autoplay = wavelink.AutoPlayMode.enabled
@@ -179,7 +228,7 @@ async def toggle_autoplay(ctx: commands.Context, value: str) -> None:
 
 
 # Add command: vq or q: view the queue
-@bot.command(name="queue", aliases=["vq", "list", "songs"])
+@bot.command(name="queue", aliases=["vq", "list", "songs", "playlist"])
 async def queue(ctx: commands.Context) -> None:
     """`:queue` - View the current queue."""
     player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)

@@ -20,7 +20,8 @@ class Bot(commands.Bot):
         await wavelink.Pool.connect(nodes=nodes, client=self, cache_capacity=None)
 
     async def on_ready(self) -> None:
-        logging.info(f"Logged in: {self.user} | {self.user.id}")
+        logging.info(f"Logged in as: {self.user} | {self.user.id}")
+        # logging.info(f"Guilds: {self.guilds.__str__}")
 
     async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload) -> None:
         logging.info(f"Wavelink Node connected: {payload.node!r} | Resumed: {payload.resumed}")

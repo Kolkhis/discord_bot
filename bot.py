@@ -7,7 +7,7 @@ import wavelink
 from discord.ext import commands
 
 LAVALINK_PASS = os.environ["LAVALINK_PASS"]
-PREFIXES = ":", ";", "!", ">", "/"
+PREFIXES = ":", ";", "!", ">", "/", "."
 
 
 class Bot(commands.Bot):

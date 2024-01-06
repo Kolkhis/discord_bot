@@ -144,7 +144,6 @@ async def play(ctx: commands.Context, *, query: str) -> None:
     except discord.HTTPException:
         pass
 
-
 @bot.command(name="move", aliases=CMD_ALIASES["move"])
 async def move(ctx: commands.Context, *, channel: str) -> None:
     """Change the channel of the bot."""
@@ -296,11 +295,11 @@ async def get_current_queue(player: wavelink.Player) -> str | None:
     if not player:
         return None
     current_queue = {
-        song.position: f"[{song.title} by {song.author}]({song.uri})"
+        song.position: f"[*{song.title}* by **{song.author}**]({song.uri})"
         for song in player.queue
     }
     embed_string = (
-        f"* Now Playing: [{player.current.title} by {player.current}]({player.current.uri})\n"
+        f"* Now Playing: [*{player.current.title}* by **{player.current}**]({player.current.uri})\n"
         if player.current
         else ""
     )
@@ -322,7 +321,6 @@ async def queue(ctx: commands.Context) -> None:
     if not player.queue:
         await ctx.send("The queue is currently empty.")
         return
-    # await ctx.send(f"The current queue:\n{player.queue}")
     embed = discord.Embed(title="Current Queue", timestamp=datetime.datetime.now())
     embed_string = await get_current_queue(player)
     if embed_string:
@@ -368,20 +366,19 @@ async def debug(ctx: commands.Context, *, value: str | None) -> None:
             f"{ctx.author.mention} You don't have permission to use this command."
         )
         return
-    value = str(value)
     # Redirecting stdout to capture the output of exec/eval
-    stdout = io.StringIO()
+    stdout: io.StringIO = io.StringIO()
     try:
         with contextlib.redirect_stdout(stdout):
             # Using eval for expressions that return a value
             try:
-                result = eval(value)
+                result: str = eval(value)
                 if result is not None:
                     print(result)
             except:
                 # Using exec for other cases
                 exec(value)
-        output = stdout.getvalue()
+            output: str = stdout.getvalue()
         await ctx.send(f"```py\n{output}\n```")
     except Exception as e:
         await ctx.send(f"```py\nError: {e}\n```")

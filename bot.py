@@ -4,6 +4,7 @@ from typing import Generator
 import discord
 import logging
 import wavelink
+import asyncio
 from discord.ext import commands
 
 LAVALINK_PASS = os.environ["LAVALINK_PASS"]
@@ -18,16 +19,34 @@ class Bot(commands.Bot):
         self.setup_logging()
         self.remove_command("help")
         self.prefixes = PREFIXES
-
-        self.members: Generator[discord.Member, None, None] = self.get_all_members()
-        self.channels: Generator[
-            discord.abc.GuildChannel, None, None
-        ] = self.get_all_channels()
-        # self.home = None  # TODO
+        # self.members: Generator[discord.Member, None, None] = self.get_all_members()
         self.owner: discord.User | None = self.get_user(
             self.owner_id if self.owner_id else int(os.environ["OWNER_ID"])
         )
+        self.connected_channel: discord.VoiceChannel | None = None
+        self.channels: dict = {ch.id: ch for ch in self.get_all_channels()}
+        self.members = {mem.id: mem.name for mem in self.get_all_members()}
 
+    @commands.Cog.listener()
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ):
+        """Disconnect the bot when the bot is alone in a voice channel"""
+        if not member.id == self.user.id:  # type:ignore
+            return
+        elif before.channel is not None:
+            return
+        else:
+            voice: discord.VoiceProtocol | None
+            if after.channel and (voice := after.channel.guild.voice_client):
+                while True:
+                    await asyncio.sleep(50)
+                    if len(after.channel.members) == 1:
+                        await voice.disconnect(force=False)
+                        break
 
     def setup_logging(self) -> None:
         # Set up logging
@@ -51,7 +70,6 @@ class Bot(commands.Bot):
             formatter=formatter,
             handler=handler,
         )
-        
 
     async def setup_hook(self) -> None:
         nodes = [wavelink.Node(uri="http://0.0.0.0:2333", password=LAVALINK_PASS)]
@@ -59,8 +77,8 @@ class Bot(commands.Bot):
 
     async def on_ready(self) -> None:
         logging.info(
-            f"Logged in as: {self.user} - User ID: {self.user.id}"
-        )  # type:ignore
+            f"Logged in as: {self.user} - User ID: {self.user.id}"  # type:ignore
+        )
 
     async def on_wavelink_node_ready(
         self, payload: wavelink.NodeReadyEventPayload
@@ -79,7 +97,6 @@ class Bot(commands.Bot):
 
         original: wavelink.Playable | None = payload.original
         track: wavelink.Playable = payload.track
-
         embed: discord.Embed = discord.Embed(title="Now Playing")
 
         if track.uri and track.source:

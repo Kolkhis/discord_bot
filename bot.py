@@ -24,8 +24,6 @@ class Bot(commands.Bot):
             self.owner_id if self.owner_id else int(os.environ["OWNER_ID"])
         )
         self.connected_channel: discord.VoiceChannel | None = None
-        self.channels: dict = {ch.id: ch for ch in self.get_all_channels()}
-        self.members = {mem.id: mem.name for mem in self.get_all_members()}
 
     @commands.Cog.listener()
     async def on_voice_state_update(
@@ -34,19 +32,25 @@ class Bot(commands.Bot):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ):
-        """Disconnect the bot when the bot is alone in a voice channel"""
+        """Disconnect the bot when it's is alone in a voice channel"""
+        voice: discord.VoiceProtocol | None
         if not member.id == self.user.id:  # type:ignore
             return
-        elif before.channel is not None:
-            return
-        else:
-            voice: discord.VoiceProtocol | None
-            if after.channel and (voice := after.channel.guild.voice_client):
-                while True:
-                    await asyncio.sleep(50)
-                    if len(after.channel.members) == 1:
-                        await voice.disconnect(force=False)
-                        break
+        elif (
+            not before.channel
+            and after.channel
+            and (voice := after.channel.guild.voice_client)
+        ):
+            while True:
+                await asyncio.sleep(120)
+                if after.channel and len(after.channel.members) == 1:
+                    embed: discord.Embed = discord.Embed(
+                        title="Bot Disconnected",
+                        description=f"Disconnecting from `{after.channel.name}`.\nReason: I'm alone 😢",
+                    )
+                    await self.home_channel.send(embed=embed)
+                    await voice.disconnect(force=False)
+                    break
 
     def setup_logging(self) -> None:
         # Set up logging
@@ -76,9 +80,11 @@ class Bot(commands.Bot):
         await wavelink.Pool.connect(nodes=nodes, client=self, cache_capacity=None)
 
     async def on_ready(self) -> None:
-        logging.info(
-            f"Logged in as: {self.user} - User ID: {self.user.id}"  # type:ignore
-        )
+        self.channels: dict = {ch.name: (ch.id, ch) for ch in self.get_all_channels()}
+        self.members = {mem.id: mem.name for mem in self.get_all_members()}
+        self.home_channel = self.get_channel(self.channels["bot_talk"][1])
+        logging.info(f"Logged in: {self.user} - ID: {self.user.id}")  # type:ignore
+        logging.info(f"Home channel: {self.home_channel}")
 
     async def on_wavelink_node_ready(
         self, payload: wavelink.NodeReadyEventPayload

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-from typing import Generator
 import discord
 import logging
 import wavelink
@@ -18,11 +17,7 @@ class Bot(commands.Bot):
         super().__init__(command_prefix=PREFIXES, intents=intents)
         self.setup_logging()
         self.remove_command("help")
-        self.prefixes = PREFIXES
-        # self.members: Generator[discord.Member, None, None] = self.get_all_members()
-        self.owner: discord.User | None = self.get_user(
-            self.owner_id if self.owner_id else int(os.environ["OWNER_ID"])
-        )
+        self.prefixes: tuple = PREFIXES
         self.connected_channel: discord.VoiceChannel | None = None
 
     @commands.Cog.listener()
@@ -32,7 +27,7 @@ class Bot(commands.Bot):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ):
-        """Disconnect the bot when it's is alone in a voice channel"""
+        """ Disconnect the bot when it's is alone in a voice channel. """
         voice: discord.VoiceProtocol | None
         if not member.id == self.user.id:  # type:ignore
             return
@@ -53,7 +48,12 @@ class Bot(commands.Bot):
                     break
 
     def setup_logging(self) -> None:
-        # Set up logging
+        """
+        Set up logging for the bot. 
+        Uses a custom formatter to add colours to the logs.
+        Passes in a custom formatter to `discord.utils.setup_logging` to 
+        customize the format of the log string. 
+        """
         logging.basicConfig(
             filename="./bot.log",
             level=logging.INFO,
@@ -76,19 +76,31 @@ class Bot(commands.Bot):
         )
 
     async def setup_hook(self) -> None:
+        """ Sets up the bot's wavelink connection. """
         nodes = [wavelink.Node(uri="http://0.0.0.0:2333", password=LAVALINK_PASS)]
         await wavelink.Pool.connect(nodes=nodes, client=self, cache_capacity=None)
 
     async def on_ready(self) -> None:
+        """ Called when the bot is ready to start working. """
+        self.owner: discord.User | None = self.get_user(
+            self.owner_id if self.owner_id else int(os.environ["OWNER_ID"])
+        )
         self.channels: dict = {ch.name: (ch.id, ch) for ch in self.get_all_channels()}
         self.members = {mem.id: mem.name for mem in self.get_all_members()}
-        self.home_channel = self.get_channel(self.channels["bot_talk"][1])
+        try:
+            self.home_channel = self.get_channel(self.channels["bot_talk"][1])
+        except KeyError:
+            self.home_channel = self.get_channel(self.channels["general"][1])
+            logging.warning("Home channel not found. Defaulting to general.")
+        finally:
+            logging.info(f"Set home channel to {self.home_channel}")
         logging.info(f"Logged in: {self.user} - ID: {self.user.id}")  # type:ignore
-        logging.info(f"Home channel: {self.home_channel}")
+        logging.info(f"Home channel: {self.home_channel if self.home_channel else 'None'}")
 
     async def on_wavelink_node_ready(
         self, payload: wavelink.NodeReadyEventPayload
     ) -> None:
+        """ Called when a wavelink node is ready to start working. """
         logging.info(
             f"Wavelink Node connected: {payload.node!r} | Resumed: {payload.resumed}"
         )
@@ -96,6 +108,7 @@ class Bot(commands.Bot):
     async def on_wavelink_track_start(
         self, payload: wavelink.TrackStartEventPayload
     ) -> None:
+        """ Called when a track starts playing. """
         player: wavelink.Player | None = payload.player
         if not player:
             logging.warning("Track-start event received without a player.")

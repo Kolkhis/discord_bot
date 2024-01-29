@@ -26,10 +26,10 @@ class Bot(commands.Bot):
         member: discord.Member,
         before: discord.VoiceState,
         after: discord.VoiceState,
-    ):
+    ) -> None:
         """ Disconnect the bot when it's is alone in a voice channel. """
         voice: discord.VoiceProtocol | None
-        if not member.id == self.user.id:  # type:ignore
+        if self.user and not member.id == self.user.id:  
             return
         elif (
             not before.channel
@@ -37,14 +37,18 @@ class Bot(commands.Bot):
             and (voice := after.channel.guild.voice_client)
         ):
             while True:
-                await asyncio.sleep(120)
-                if after.channel and len(after.channel.members) == 1:
+                await asyncio.sleep(60)
+                if after.channel and len(after.channel.members) <= 1:
                     embed: discord.Embed = discord.Embed(
                         title="Bot Disconnected",
                         description=f"Disconnecting from `{after.channel.name}`.\nReason: I'm alone 😢",
                     )
-                    await self.home_channel.send(embed=embed)
+                    await after.channel.send(embed=embed)
                     await voice.disconnect(force=False)
+                    voice.cleanup()
+                    if self.voice_clients:
+                        await self.voice_clients[0].disconnect(force=False)
+                        self.voice_clients[0].cleanup()
                     break
 
     def setup_logging(self) -> None:
@@ -55,7 +59,7 @@ class Bot(commands.Bot):
         customize the format of the log string. 
         """
         logging.basicConfig(
-            filename="./bot.log",
+            filename="logs/bot.log",
             level=logging.INFO,
             format="%(asctime)s:%(levelname)s:%(message)s",
         )
@@ -145,4 +149,4 @@ class Bot(commands.Bot):
             embed.add_field(name="Link", value=track.preview_url)
 
         logging.info(f"Track started: {track!r}")
-        await player.home.send(embed=embed)  # type:ignore
+        await player.home_channel.send(embed=embed)  # type:ignore

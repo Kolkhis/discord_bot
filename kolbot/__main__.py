@@ -7,7 +7,8 @@ import discord
 import wavelink
 from typing import cast
 from discord.ext import commands
-from bot import Bot
+from kolbot.bot import Bot
+from kolbot.utils import get_current_queue
 import logging
 
 bot: Bot = Bot()
@@ -63,17 +64,16 @@ async def play(ctx: commands.Context, *, query: str) -> None:
             )
             return
 
-    if not hasattr(player, "home"):
-        player.home = ctx.channel  # type:ignore
-    elif player.home != ctx.channel:  # type:ignore
+    if not hasattr(player, "home_channel"):
+        player.home_channel = ctx.channel  # type:ignore
+    elif player.home_channel != ctx.channel:  # type:ignore
         await ctx.send(
-            f"I'm already in a channel: {player.home.mention}."  # type:ignore
+            f"I'm already in a channel: {player.home_channel.mention}."  # type:ignore
         )
         return
 
-    # Get tracks and playlists
-    # If spotify is enabled (LavaSrc), get Spotify tracks if it's a URL
-    # use YouTube for regular searches (non-urls)
+    # Fetch tracks and playlists. Enable Spotify (&& other sources) via LavaSrc
+    # Use YouTube for searching (non-urls)
     player.autoplay = wavelink.AutoPlayMode.enabled
     try:
         tracks: wavelink.Search = await wavelink.Playable.search(query)
@@ -86,6 +86,7 @@ async def play(ctx: commands.Context, *, query: str) -> None:
                      Args: {e.args}\n
                      Full Error:{e}"""
         )
+        await ctx.send(f"DEBUG: An error occurred while searching - {e}")
         if e.error == "The playlist does not exist.":
             new_query: str = query.split("&")[0]
             await ctx.send(f"Couldn't find that playlist. Searching for: {new_query}")
@@ -105,10 +106,8 @@ async def play(ctx: commands.Context, *, query: str) -> None:
     except Exception as e:
         logging.warn(f"Error while searching for tracks: {e}")
         await ctx.send("The playlist couldn't be loaded. Maybe it's private?")
-    finally:
-        tracks = tracks if tracks else []  # type:ignore
 
-    if not tracks:
+    if not tracks:  # type:ignore
         await ctx.send(
             f"Sorry {ctx.author.mention}, I couldn't find any tracks that match "
             f'"{query}".\nTry again with a different query.'
@@ -117,31 +116,68 @@ async def play(ctx: commands.Context, *, query: str) -> None:
 
     if isinstance(tracks, wavelink.Playlist):
         added: int = await player.queue.put_wait(tracks, atomic=True)
-        await ctx.send(
-            f"{ctx.author.mention} added the playlist **{tracks.name}** ({added} songs) to the queue."
+        embed: discord.Embed = discord.Embed(
+            title="Playlist Added",
+            color=0x008000,)
+        embed.set_author(
+            name=f"{ctx.author.name.title()}",
+            icon_url=ctx.author.avatar.url
+            if ctx.author.avatar
+            else ctx.author.default_avatar.url,
         )
+        embed.description = f"Added the playlist **{tracks.name}** ({added} songs) to the queue.\n"
+        await ctx.send(embed=embed)
+
     else:
         track: wavelink.Playable = tracks[0]
         await player.queue.put_wait(track)
-        await ctx.send(f"{ctx.author.mention} Added **`{track}`** to the queue.")
+        embed: discord.Embed = discord.Embed(
+            title="Song Added",
+            color=0x008000,)
+        embed.set_author(
+            name=f"{ctx.author.name.title()}",
+            icon_url=ctx.author.avatar.url
+            if ctx.author.avatar
+            else ctx.author.default_avatar.url,
+        )
+        embed.description = f"Added [{track.title}]({track.uri}) to the queue.\n"
+        await ctx.send(embed=embed)
 
-    if not player.playing:
+    if player and not player.playing:
         await player.play(player.queue.get(), volume=30)
-
     if player and player.paused:
         await player.pause(False)
-        await ctx.message.add_reaction("\u2705")
 
     try:
         await ctx.message.delete()
     except discord.HTTPException:
-        pass
+        await ctx.message.add_reaction("😒")
 
 
 @bot.command(name="move", aliases=CMD_ALIASES["move"])
 async def move(ctx: commands.Context, *, channel: str | None = None) -> None:
     """Change the channel of the bot."""
     player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
+    # channel = channel if channel else ctx.author.voice.channel.name
+    ######## TODO: Try to use this instead #############
+    try:
+        if (ch := ctx.author.voice.channel) and not channel: #type:ignore
+            await ch.connect(cls=wavelink.Player)
+            await ctx.send(f"Successfully moved to channel: {ch.name}")
+            return
+    except AttributeError:
+        await ctx.send(f"Unable to join your voice channel.")
+        return
+
+    ####################################################
+    try:
+        new_channel: discord.VoiceChannel | None = bot.channels.get(channel, None)[1]
+    except IndexError:
+        new_channel = None
+        logging.info(f"Could not find channel: {channel}")
+    else:
+        if new_channel:
+            await new_channel.connect(cls=wavelink.Player)
     if not player:
         try:
             player = await ctx.author.voice.channel.connect(  # type:ignore
@@ -149,6 +185,9 @@ async def move(ctx: commands.Context, *, channel: str | None = None) -> None:
             )
             player = cast(wavelink.Player, ctx.voice_client)
         except AttributeError:
+            # bot.channels.get()
+            ctx.guild.voice_client
+            # print(f"Could not join channel: {}")
             await ctx.send("Join a voice channel before using this command.")
             return
         except discord.ClientException:
@@ -157,16 +196,22 @@ async def move(ctx: commands.Context, *, channel: str | None = None) -> None:
             )
             return
         else:
-            await ctx.send(f"Moved to channel: {ctx.author.voice.channel.name}") # type:ignore
+            ctx.author.voice.channel = player.channel  # type:ignore
+            await ctx.send(
+                f"Moved to channel: {ctx.author.voice.channel.name}"
+            )  # type:ignore
             return
+    else:
+        await player.connect(reconnect=True)
 
     try:
-        # TODO: Make this work. It doesn't. I don't know why.
+        # TODO: Switch bot channel cmd: Make this work. It doesn't. I don't know why.
         #   * It doesn't maintain the player when given a channel (via argument)
         #       * It does fire the "on_voice_state_change" event
         #   * It maintains the player when given no argument (switches to user's channel)
         #       * It does not maintain the queue though.
         # player = await ctx.author.voice.channel.connect(cls=wavelink.Player) # type:ignore
+
         if channel:
             queue: wavelink.Queue = player.queue
             await ctx.send(f"Moving to channel: {channel}")
@@ -178,15 +223,20 @@ async def move(ctx: commands.Context, *, channel: str | None = None) -> None:
             queue: wavelink.Queue = player.queue
             await player.disconnect()
             try:
-                await ctx.send(f"Debug: ctx.author.voice.channel.name = {ctx.author.voice.channel.name}")
+                await ctx.send(
+                    f"Debug: ctx.author.voice.channel.name = {ctx.author.voice.channel.name}"
+                )
             except AttributeError as e:
                 await ctx.send(f"Debug: ctx.author.voice.channel = None\n{e}")
-            player = await bot.channels[ctx.author.voice.channel.name][1].connect(cls=wavelink.Player) # type:ignore
+            player = await bot.channels[ctx.author.voice.channel.name][1].connect(
+                cls=wavelink.Player
+            )  # type:ignore
             player = cast(wavelink.Player, ctx.voice_client)
             player.queue = queue
     except Exception as e:
         logging.info(f"Error while moving to channel: {e}")
         await ctx.reply(f"Error while moving to channel: {e}")
+
 
 @bot.command(aliases=CMD_ALIASES["skip"])
 async def skip(ctx: commands.Context) -> None:
@@ -194,9 +244,19 @@ async def skip(ctx: commands.Context) -> None:
     player: wavelink.Player
     if not (player := cast(wavelink.Player, ctx.voice_client)):
         return
-    await ctx.reply(f"Skipping {player.current.title}." if player.current else "Skipping song.")
+    embed: discord.Embed = discord.Embed(title="Song Skipped", color=0x00FF00)
+    embed.set_author(
+        name=f"{ctx.author.name.title()} used `/{ctx.invoked_with}`",
+        icon_url=ctx.author.avatar.url
+        if ctx.author.avatar
+        else ctx.author.default_avatar.url,
+    )
+    await ctx.reply(embed=embed)
     await player.skip(force=True)
-    await ctx.message.add_reaction("\u2705")
+    try:
+        await ctx.message.delete()
+    except discord.HTTPException:
+        await ctx.message.add_reaction("😒")
 
 
 @bot.command(name="toggle", aliases=CMD_ALIASES["pause_resume"])
@@ -208,7 +268,25 @@ async def pause_resume(ctx: commands.Context) -> None:
         return
     await player.pause(not player.paused)
     await ctx.send("Playback paused." if player.paused else "Playback resumed.")
-    await ctx.message.add_reaction("\u2705")
+    try:
+        await ctx.message.delete()
+    except discord.HTTPException:
+        await ctx.message.add_reaction("😒")
+    finally:
+        embed: discord.Embed = discord.Embed(
+            title=f"Song {'paused' if player.paused else 'resumed'}", color=0x00FF00
+        )
+        embed.set_author(
+            name=f"{ctx.author.name.title()} used `/{ctx.invoked_with}`",
+            icon_url=ctx.author.avatar.url
+            if ctx.author.avatar
+            else ctx.author.default_avatar.url,
+        )
+        embed.description = (
+            f"{ctx.author} has paused the player."
+            if player.paused
+            else f"{ctx.author} has resumed the player."
+        )
 
 
 @bot.command(name="volume", aliases=CMD_ALIASES["volume"])
@@ -222,14 +300,14 @@ async def volume(ctx: commands.Context, value: int | None = None) -> None:
         match value:
             case None:
                 await ctx.send(f"debug: Current volume: {player.volume}")
-                return await ctx.message.add_reaction("🙃")
+                return await ctx.message.add_reaction("😒")
             case value if value <= 1000:
                 await player.set_volume(value)
                 await ctx.send(f"debug: Volume set to {player.volume}")
-                return await ctx.message.add_reaction("🙃")
+                return await ctx.message.add_reaction("😒")
             case _:
                 await ctx.send("debug: Enter a value between 1 and 1000.")
-                return await ctx.message.add_reaction("🙃")
+                return await ctx.message.add_reaction("😒")
     match value:
         case None:
             await ctx.send(f"The current volume is {player.volume}")
@@ -238,7 +316,10 @@ async def volume(ctx: commands.Context, value: int | None = None) -> None:
         case _:
             await ctx.send("Enter a value between 0 and 50")
         # await player.set_volume(value)
-    await ctx.message.add_reaction("\u2705")
+    try:
+        await ctx.message.delete()
+    except discord.HTTPException:
+        await ctx.message.add_reaction("😒")
 
 
 @bot.command(name="disconnect", aliases=CMD_ALIASES["disconnect"])
@@ -248,13 +329,27 @@ async def disconnect(ctx: commands.Context) -> None:
     if not (player := cast(wavelink.Player, ctx.voice_client)):
         return
     await player.disconnect()
-    await ctx.message.add_reaction("\u2705")
+    try:
+        await ctx.message.delete()
+    except discord.HTTPException:
+        await ctx.message.add_reaction("😒")
+    else:
+        embed: discord.Embed = discord.Embed(title="Disconnected", color=0xcf1020)
+        embed.set_author(
+            name=f"{ctx.author.name.title()}",
+            icon_url=ctx.author.avatar.url
+            if ctx.author.avatar
+            else ctx.author.default_avatar.url,
+        )
+        embed.description = "Disconnected from voice channel."
+        await ctx.send(embed=embed)
 
 
 @bot.command(name="help", aliases=CMD_ALIASES["help"])
 async def help(ctx: commands.Context) -> None:
-    """`:cmd` / `:h` - Get help: Display a list of commands."""
+    """`/help` / `:cmd` / `:h` - Get help: Display a list of commands."""
     embed: discord.Embed = discord.Embed(title="Help")
+    embed.add_field(name="Usage", value=f"{ctx.author} used {ctx.invoked_with}")
     prefix_msg: str = (
         f"* Bot prefix(es): `{bot.prefixes!r}`\n\t* Usage: `<prefix><command>`\n"
     )
@@ -267,7 +362,10 @@ async def help(ctx: commands.Context) -> None:
             )
         doc += cmd_alias
         embed.add_field(name=cmd, value=doc, inline=False)
-    await ctx.message.add_reaction("🙃")
+    try:
+        await ctx.message.delete()
+    except discord.HTTPException:
+        await ctx.message.add_reaction("😒")
     await ctx.send(embed=embed)
 
 
@@ -276,12 +374,18 @@ async def toggle_autoplay(ctx: commands.Context, value: str | None = None) -> No
     """`:autoplay (on/off)` / `:ap (on/off)` - Toggle autoplay."""
     player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
     if not value or value.strip() == "":
-        values = {
+        values: dict = {
             "on": wavelink.AutoPlayMode.enabled.value,  # 0
             "off": wavelink.AutoPlayMode.partial.value,  # 1
             "disabled": wavelink.AutoPlayMode.disabled.value,  # 2
         }
         embed: discord.Embed = discord.Embed(title="Autoplay")
+        embed.set_author(
+            name=f"{ctx.author.name.title()}\nused /{ctx.invoked_with}",
+            icon_url=ctx.author.avatar.url
+            if ctx.author.avatar
+            else ctx.author.default_avatar.url,
+        )
         embed.description = (
             f"""
         Autoplay is currently set to {player.autoplay}\n
@@ -295,15 +399,18 @@ async def toggle_autoplay(ctx: commands.Context, value: str | None = None) -> No
             else f"""
         Possible values: `on`, `off`, `disabled`\n
         **Note**: `disabled` will disable playlists from autoplaying.\n
-        `on`: Play songs and fetch recommendations (0)\n
-        `off`: Play songs, but don't fetch recommendations (1)\n
-        `disabled`: Don't autoplay anything, even playlists. (2)\n
+        `on`: Play songs and fetch recommendations ({values['on']})\n
+        `off`: Play songs, but don't fetch recommendations ({values['off']})\n
+        `disabled`: Don't autoplay anything, even playlists. ({values['disabled']})\n
         """
         )
-        embed.set_footer(text="Toggle autoplay with /autoplay (on/off)")
-        await ctx.message.add_reaction("🙃")
+        embed.set_footer(text="Toggle autoplay with `/autoplay [on/off]`")
         await ctx.send(embed=embed)
-        return
+
+    try:
+        await ctx.message.delete()
+    except discord.HTTPException:
+        await ctx.message.add_reaction("😒")
     if not (player := cast(wavelink.Player, ctx.voice_client)):
         return
     match value:
@@ -311,31 +418,6 @@ async def toggle_autoplay(ctx: commands.Context, value: str | None = None) -> No
             player.autoplay = wavelink.AutoPlayMode.enabled
         case "off":
             player.autoplay = wavelink.AutoPlayMode.partial
-    await ctx.message.add_reaction("\u2705")
-    try:
-        await ctx.message.delete()
-    except discord.HTTPException:
-        pass
-
-
-async def get_current_queue(player: wavelink.Player) -> str | None:
-    if not player:
-        return None
-    current_queue = {
-        song.position: f"[*{song.title}* by **{song.author}**]({song.uri})"
-        for song in player.queue
-    }
-    embed_string = (
-        f"* Now Playing: [*{player.current.title}* by **{player.current}**]({player.current.uri})\n"
-        if player.current
-        else ""
-    )
-    for pos, song in current_queue.items():
-        if pos == 0:
-            embed_string += f"* Up Next: {song}"
-            continue
-        embed_string += f"\n* {pos}: {song}"
-    return embed_string
 
 
 @bot.command(name="queue", aliases=CMD_ALIASES["queue"])
@@ -349,8 +431,8 @@ async def queue(ctx: commands.Context) -> None:
         await ctx.send("The queue is currently empty.")
         return
     embed = discord.Embed(title="Current Queue", timestamp=datetime.datetime.now())
-    if (embed_string := await get_current_queue(player)):
-        embed.description = (f"The current queue:\n\n{embed_string}")
+    if embed_string := await get_current_queue(player):
+        embed.description = f"The current queue:\n\n{embed_string}"
         await ctx.send(embed=embed)
     else:
         await ctx.send("The queue appears to be empty.")
@@ -388,7 +470,7 @@ async def debug(ctx: commands.Context, *, value: str | None) -> None:
     if str(ctx.author.id) == os.environ.get("OWNER_ID") and await bot.is_owner(
         ctx.author
     ):
-        await ctx.message.add_reaction("🙃")
+        await ctx.message.add_reaction("😒")
         if value is None:
             await ctx.send(f"{bot.is_owner} No input provided.")
             return
@@ -439,3 +521,5 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+# I'm looking for a doctor in the area, since I'll be moving down there soon

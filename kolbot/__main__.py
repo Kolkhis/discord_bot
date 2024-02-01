@@ -72,18 +72,16 @@ async def play(ctx: commands.Context, *, query: str) -> None:
         )
         return
 
-    # Fetch tracks and playlists. Enable Spotify (&& other sources) via LavaSrc
-    # Use YouTube for searching (non-urls)
+    # Fetch tracks and playlists. Enable Spotify && other sources via LavaSrc
+    # Use YouTube for searching non-urls
     player.autoplay = wavelink.AutoPlayMode.enabled
     try:
         tracks: wavelink.Search = await wavelink.Playable.search(query)
     except wavelink.LavalinkLoadException as e:
         logging.info(
             f"""Encountered LavalinkLoadException.\n
-                     Cause: {e.cause}\n
-                     Error: {e.error}\n
-                     Severity: {e.severity}\n
-                     Args: {e.args}\n
+                     Cause: {e.cause}\nError: {e.error}\n
+                     Severity: {e.severity}\nArgs: {e.args}\n
                      Full Error:{e}"""
         )
         await ctx.send(f"DEBUG: An error occurred while searching - {e}")
@@ -95,6 +93,7 @@ async def play(ctx: commands.Context, *, query: str) -> None:
             logging.warn(f"Error while searching for tracks: {e}")
             await ctx.send("The playlist couldn't be loaded. Maybe it's private?")
             raise e
+
     except commands.errors.CommandInvokeError as e:
         logging.warn(f"%(filename)s: Encountered CommandInvokeError.\nArgs: {e.args}")
         try:
@@ -118,14 +117,19 @@ async def play(ctx: commands.Context, *, query: str) -> None:
         added: int = await player.queue.put_wait(tracks, atomic=True)
         embed: discord.Embed = discord.Embed(
             title="Playlist Added",
-            color=0x008000,)
+            color=0x008000,
+        )
         embed.set_author(
             name=f"{ctx.author.name.title()}",
-            icon_url=ctx.author.avatar.url
-            if ctx.author.avatar
-            else ctx.author.default_avatar.url,
+            icon_url=(
+                ctx.author.avatar.url
+                if ctx.author.avatar
+                else ctx.author.default_avatar.url
+            ),
         )
-        embed.description = f"Added the playlist **{tracks.name}** ({added} songs) to the queue.\n"
+        embed.description = (
+            f"Added the playlist **{tracks.name}** ({added} songs) to the queue.\n"
+        )
         await ctx.send(embed=embed)
 
     else:
@@ -133,12 +137,15 @@ async def play(ctx: commands.Context, *, query: str) -> None:
         await player.queue.put_wait(track)
         embed: discord.Embed = discord.Embed(
             title="Song Added",
-            color=0x008000,)
+            color=0x008000,
+        )
         embed.set_author(
             name=f"{ctx.author.name.title()}",
-            icon_url=ctx.author.avatar.url
-            if ctx.author.avatar
-            else ctx.author.default_avatar.url,
+            icon_url=(
+                ctx.author.avatar.url
+                if ctx.author.avatar
+                else ctx.author.default_avatar.url
+            ),
         )
         embed.description = f"Added [{track.title}]({track.uri}) to the queue.\n"
         await ctx.send(embed=embed)
@@ -161,7 +168,7 @@ async def move(ctx: commands.Context, *, channel: str | None = None) -> None:
     # channel = channel if channel else ctx.author.voice.channel.name
     ######## TODO: Try to use this instead #############
     try:
-        if (ch := ctx.author.voice.channel) and not channel: #type:ignore
+        if (ch := ctx.author.voice.channel) and not channel:  # type:ignore
             await ch.connect(cls=wavelink.Player)
             await ctx.send(f"Successfully moved to channel: {ch.name}")
             return
@@ -247,9 +254,11 @@ async def skip(ctx: commands.Context) -> None:
     embed: discord.Embed = discord.Embed(title="Song Skipped", color=0x00FF00)
     embed.set_author(
         name=f"{ctx.author.name.title()} used `/{ctx.invoked_with}`",
-        icon_url=ctx.author.avatar.url
-        if ctx.author.avatar
-        else ctx.author.default_avatar.url,
+        icon_url=(
+            ctx.author.avatar.url
+            if ctx.author.avatar
+            else ctx.author.default_avatar.url
+        ),
     )
     await ctx.reply(embed=embed)
     await player.skip(force=True)
@@ -278,9 +287,11 @@ async def pause_resume(ctx: commands.Context) -> None:
         )
         embed.set_author(
             name=f"{ctx.author.name.title()} used `/{ctx.invoked_with}`",
-            icon_url=ctx.author.avatar.url
-            if ctx.author.avatar
-            else ctx.author.default_avatar.url,
+            icon_url=(
+                ctx.author.avatar.url
+                if ctx.author.avatar
+                else ctx.author.default_avatar.url
+            ),
         )
         embed.description = (
             f"{ctx.author} has paused the player."
@@ -334,12 +345,14 @@ async def disconnect(ctx: commands.Context) -> None:
     except discord.HTTPException:
         await ctx.message.add_reaction("😒")
     else:
-        embed: discord.Embed = discord.Embed(title="Disconnected", color=0xcf1020)
+        embed: discord.Embed = discord.Embed(title="Disconnected", color=0xCF1020)
         embed.set_author(
             name=f"{ctx.author.name.title()}",
-            icon_url=ctx.author.avatar.url
-            if ctx.author.avatar
-            else ctx.author.default_avatar.url,
+            icon_url=(
+                ctx.author.avatar.url
+                if ctx.author.avatar
+                else ctx.author.default_avatar.url
+            ),
         )
         embed.description = "Disconnected from voice channel."
         await ctx.send(embed=embed)
@@ -382,9 +395,11 @@ async def toggle_autoplay(ctx: commands.Context, value: str | None = None) -> No
         embed: discord.Embed = discord.Embed(title="Autoplay")
         embed.set_author(
             name=f"{ctx.author.name.title()}\nused /{ctx.invoked_with}",
-            icon_url=ctx.author.avatar.url
-            if ctx.author.avatar
-            else ctx.author.default_avatar.url,
+            icon_url=(
+                ctx.author.avatar.url
+                if ctx.author.avatar
+                else ctx.author.default_avatar.url
+            ),
         )
         embed.description = (
             f"""

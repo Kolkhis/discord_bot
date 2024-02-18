@@ -1,6 +1,28 @@
 #!/bin/bash
 
-trap "[ -f ./lavalink_pipe ] && rm ./lavalink_pipe" SIGINT
+trap "[[ -f ./lavalink_pipe ]] && rm ./lavalink_pipe" SIGINT
+
+declare LAVALINK_DIR
+
+while "$1"; do
+    case "$1" in
+        (-h|--help)
+            printf "Usage: %s [OPTIONS]\n" "$0";
+            printf "    -h, --help\t\t\tShow this help message\n";
+            printf "    -l, --lavalink\t\t\tPath to Lavalink directory\n";
+            ;;
+        (-l|--lavalink)
+            LAVALINK_DIR="$1";
+            shift;
+            ;;
+    esac
+done
+
+
+if [[ -z "$LAVALINK_DIR" ]]; then
+    LAVALINK_DIR="./Lavalink"
+fi
+
 
 check_vars() {
     [[ -z "$XDG_CONFIG_HOME" ]] && XDG_CONFIG_HOME="$HOME/.config"
@@ -15,7 +37,7 @@ check_vars() {
     if [[ ! -s "$XDG_CONFIG_HOME/discord/LAVALINK_PASS" ]]; then
         printf "\nNo Lavalink Password provided.\n \
             Please provide a Lavalink Password in %s\n\
-            It should be specified in application.yml." \
+            It should also be specified in ./Lavalink/application.yml.\n" \
             "$XDG_CONFIG_HOME/discord/LAVALINK_PASS"
         return 1
     fi
@@ -39,6 +61,8 @@ if [[ ! -d "./venv" ]]; then
             "python3.10-venv (or later)"
         exit 1
     fi
+    . venv/bin/activate
+    pip install -r requirements.txt
     cat >> ./venv/bin/activate <<- 'EOC'
 
         BOT_TOKEN="$(head -1 "$HOME/.config/discord/BOT_TOKEN")"
@@ -48,6 +72,10 @@ EOC
 fi
 
 start_lavalink() {
+    if ! [[ -d "./Lavalink" ]]; then
+        printf "Couldn't find the Lavalink directory.\n"
+        return 1
+    fi
     mkfifo lavalink_pipe
     (cd ./Lavalink && java -jar ./Lavalink.jar > ../lavalink_pipe 2>&1) &
     printf "Waiting for Lavalink to be ready...\n"

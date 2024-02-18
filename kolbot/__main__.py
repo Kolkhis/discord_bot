@@ -164,12 +164,20 @@ async def play(ctx: commands.Context, *, query: str) -> None:
 @bot.command(name="move", aliases=CMD_ALIASES["move"])
 async def move(ctx: commands.Context, *, channel: str | None = None) -> None:
     """Change the channel of the bot."""
-    player: wavelink.Player = cast(wavelink.Player, ctx.voice_client)
+    player: wavelink.Player #  = cast(wavelink.Player, ctx.voice_client)
     # channel = channel if channel else ctx.author.voice.channel.name
     ######## TODO: Try to use this instead #############
     try:
         if (ch := ctx.author.voice.channel) and not channel:  # type:ignore
-            await ch.connect(cls=wavelink.Player)
+            player = await ch.connect(cls=wavelink.Player)
+            await ctx.send(f"Successfully moved to channel: {ch.name}")
+            return
+        else:
+            ch = bot.channels.get(channel, ctx.author.voice.channel)
+            if not ch:
+                await ctx.send(f"Unable to find channel: {channel}")
+                return
+            player = await ch.connect(cls=wavelink.Player)
             await ctx.send(f"Successfully moved to channel: {ch.name}")
             return
     except AttributeError:
@@ -177,72 +185,72 @@ async def move(ctx: commands.Context, *, channel: str | None = None) -> None:
         return
 
     ####################################################
-    try:
-        new_channel: discord.VoiceChannel | None = bot.channels.get(channel, None)[1]
-    except IndexError:
-        new_channel = None
-        logging.info(f"Could not find channel: {channel}")
-    else:
-        if new_channel:
-            await new_channel.connect(cls=wavelink.Player)
-    if not player:
-        try:
-            player = await ctx.author.voice.channel.connect(  # type:ignore
-                cls=wavelink.Player
-            )
-            player = cast(wavelink.Player, ctx.voice_client)
-        except AttributeError:
-            # bot.channels.get()
-            ctx.guild.voice_client
-            # print(f"Could not join channel: {}")
-            await ctx.send("Join a voice channel before using this command.")
-            return
-        except discord.ClientException:
-            await ctx.send(
-                f"{ctx.author.mention} I was unable to join your voice channel. Please try again."
-            )
-            return
-        else:
-            ctx.author.voice.channel = player.channel  # type:ignore
-            await ctx.send(
-                f"Moved to channel: {ctx.author.voice.channel.name}"
-            )  # type:ignore
-            return
-    else:
-        await player.connect(reconnect=True)
+    # try:
+    #     new_channel: discord.VoiceChannel | None = bot.channels.get(channel, None)[1]
+    # except IndexError:
+    #     new_channel = None
+    #     logging.info(f"Could not find channel: {channel}")
+    # else:
+    #     if new_channel:
+    #         await new_channel.connect(cls=wavelink.Player)
+    # if not player:
+    #     try:
+    #         player = await ctx.author.voice.channel.connect(  # type:ignore
+    #             cls=wavelink.Player
+    #         )
+    #         player = cast(wavelink.Player, ctx.voice_client)
+    #     except AttributeError:
+    #         # bot.channels.get()
+    #         # ctx.guild.voice_client
+    #         # print(f"Could not join channel: {}")
+    #         await ctx.send("Join a voice channel before using this command.")
+    #         return
+    #     except discord.ClientException:
+    #         await ctx.send(
+    #             f"{ctx.author.mention} I was unable to join your voice channel. Please try again."
+    #         )
+    #         return
+    #     else:
+    #         ctx.author.voice.channel = player.channel  # type:ignore
+    #         await ctx.send(
+    #             f"Moved to channel: {ctx.author.voice.channel.name}"
+    #         )  # type:ignore
+    #         return
+    # else:
+    #     await player.connect(reconnect=True)
 
-    try:
-        # TODO: Switch bot channel cmd: Make this work. It doesn't. I don't know why.
-        #   * It doesn't maintain the player when given a channel (via argument)
-        #       * It does fire the "on_voice_state_change" event
-        #   * It maintains the player when given no argument (switches to user's channel)
-        #       * It does not maintain the queue though.
-        # player = await ctx.author.voice.channel.connect(cls=wavelink.Player) # type:ignore
+    # try:
+    #     # TODO: Switch bot channel cmd: Make this work. It doesn't. I don't know why.
+    #     #   * It doesn't maintain the player when given a channel (via argument)
+    #     #       * It does fire the "on_voice_state_change" event
+    #     #   * It maintains the player when given no argument (switches to user's channel)
+    #     #       * It does not maintain the queue though.
+    #     # player = await ctx.author.voice.channel.connect(cls=wavelink.Player) # type:ignore
 
-        if channel:
-            queue: wavelink.Queue = player.queue
-            await ctx.send(f"Moving to channel: {channel}")
-            await player.disconnect()
-            player = await bot.channels[channel][1].connect(cls=wavelink.Player)
-            player = cast(wavelink.Player, ctx.voice_client)
-            player.queue = queue
-        else:
-            queue: wavelink.Queue = player.queue
-            await player.disconnect()
-            try:
-                await ctx.send(
-                    f"Debug: ctx.author.voice.channel.name = {ctx.author.voice.channel.name}"
-                )
-            except AttributeError as e:
-                await ctx.send(f"Debug: ctx.author.voice.channel = None\n{e}")
-            player = await bot.channels[ctx.author.voice.channel.name][1].connect(
-                cls=wavelink.Player
-            )  # type:ignore
-            player = cast(wavelink.Player, ctx.voice_client)
-            player.queue = queue
-    except Exception as e:
-        logging.info(f"Error while moving to channel: {e}")
-        await ctx.reply(f"Error while moving to channel: {e}")
+    #     if channel:
+    #         queue: wavelink.Queue = player.queue
+    #         await ctx.send(f"Moving to channel: {channel}")
+    #         await player.disconnect()
+    #         player = await bot.channels[channel][1].connect(cls=wavelink.Player)
+    #         player = cast(wavelink.Player, ctx.voice_client)
+    #         player.queue = queue
+    #     else:
+    #         queue: wavelink.Queue = player.queue
+    #         await player.disconnect()
+    #         try:
+    #             await ctx.send(
+    #                 f"Debug: ctx.author.voice.channel.name = {ctx.author.voice.channel.name}"
+    #             )
+    #         except AttributeError as e:
+    #             await ctx.send(f"Debug: ctx.author.voice.channel = None\n{e}")
+    #         player = await bot.channels[ctx.author.voice.channel.name][1].connect(
+    #             cls=wavelink.Player
+    #         )  # type:ignore
+    #         player = cast(wavelink.Player, ctx.voice_client)
+    #         player.queue = queue
+    # except Exception as e:
+    #     logging.info(f"Error while moving to channel: {e}")
+    #     await ctx.reply(f"Error while moving to channel: {e}")
 
 
 @bot.command(aliases=CMD_ALIASES["skip"])

@@ -1,38 +1,11 @@
 #!/bin/bash
 # shellcheck disable=SC1090
 
-#######################################################################
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-#%%                                                                 %%#
-#%%   888    d8P            888  888       888       d8b            %%#
-#%%   888   d8P             888  888       888       Y8P            %%#
-#%%   888  d8P              888  888       888                      %%#
-#%%   888d88K      .d88b.   888  888  888  88888b.   888  .d8888b   %%#
-#%%   8888888b    d88""88b  888  888 .88P  888 "88b  888  88K       %%#
-#%%   888  Y88b   888  888  888  888888K   888  888  888  "Y8888b.  %%#
-#%%   888   Y88b  Y88..88P  888  888 "88b  888  888  888       X88  %%#
-#%%   888    Y88b  "Y88P"   888  888  888  888  888  888   88888P'  %%#
-#%%                                                                 %%#
-#%%                                                                 %%#
-#%%                           Presents...                           %%#
-#%%                                                                 %%#
-#%%                                                                 %%#
-#%%    888    d8P              888   888                   888      %%#
-#%%    888   d8P               888   888                   888      %%#
-#%%    888  d8P                888   888                   888      %%#
-#%%    888d88K       .d88b.    888   88888b.     .d88b.    888888   %%#
-#%%    8888888b     d88""88b   888   888 "88b   d88""88b   888      %%#
-#%%    888  Y88b    888  888   888   888  888   888  888   888      %%#
-#%%    888   Y88b   Y88..88P   888   888 d88P   Y88..88P   Y88b.    %%#
-#%%    888    Y88b   "Y88P"    888   88888P"     "Y88P"     "Y888   %%#
-#%%                                                                 %%#
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-#######################################################################
 
+[[ -f ./banner.txt ]] && dpkg -l | grep -q 'lolcat' 2>/dev/null &&
+    lolcat < ./banner.txt
 
-
-
-trap "[[ -f ./lavalink_pipe ]] && rm ./lavalink_pipe" SIGINT
+trap "[[ -f ./lavalink_pipe ]] && rm ./lavalink_pipe && exit 0" SIGINT
 
 declare LAVALINK_DIR
 
@@ -74,9 +47,9 @@ start_lavalink() {
     (cd "$LAVALINK_DIR" && java -jar ./Lavalink.jar > "$pipe" 2>&1 &) 
     printf "Waiting for Lavalink to be ready...\n"
     while IFS= read -r line; do
-        printf "Lavalink: %s\n" "$line"
+        # printf "Lavalink: %s\n" "$line"
         if printf "%s" "$line" | grep 'Lavalink is ready to accept connections.' > /dev/null 2>&1; then
-            printf "\e[32mLavalink is ready to accept connections!\n\nLaunching Kolbot...\e[0m\n"
+            printf "\e[32mLavalink is ready to accept connections!\nLaunching Kolbot...\e[0m\n"
             break
         fi
     done < lavalink_pipe
@@ -84,7 +57,22 @@ start_lavalink() {
 }
 
 
-if [[ ! -d "./venv" ]] || ! find . -name 'activate'; then
+check_activation_script() {
+    ACTIVATION_SCRIPT=$(find . -name 'activate')
+    if ! grep -q -E "BOT_TOKEN|LAVALINK_PASS|OWNER_ID" "$ACTIVATION_SCRIPT" 2>/dev/null; then
+        printf "Setting up the activation script with the environment variables...\n"
+        cat >> ./venv/bin/activate <<- '_end_var_fix'
+
+            BOT_TOKEN="$(head -1 "$HOME/.config/discord/BOT_TOKEN")"
+            LAVALINK_PASS="$(head -1 "$HOME/.config/discord/LAVALINK_PASS")"
+            OWNER_ID="$(head -1 "$HOME/.config/discord/OWNER_ID")"
+_end_var_fix
+    fi
+    return $?;
+}
+
+
+if [[ ! -d "./venv" ]] && ! find . -name 'activate'; then
     printf "No virtual environment found. Creating one...\n"
     if ! python3 -m venv venv; then
         printf "There was a problem creating the virtual environment.\n"
@@ -93,9 +81,14 @@ if [[ ! -d "./venv" ]] || ! find . -name 'activate'; then
             "python3.10-venv (or later)"
         exit 1
     fi
-    . "$(find . -name 'activate')"
-    . venv/bin/activate
-    pip install -r requirements.txt
+    if ! source venv/bin/activate && source "$(find . -name 'activate')"; then
+        printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m"
+        exit 1
+    fi
+    if ! pip install -r requirements.txt; then
+        printf "\e[31mThere was a problem installing the dependencies!\n\e[0m"
+        exit 1
+    fi
     printf "Setting up the activation script with the environment variables...\n"
     cat >> ./venv/bin/activate <<- 'EOC'
 
@@ -105,6 +98,8 @@ if [[ ! -d "./venv" ]] || ! find . -name 'activate'; then
 EOC
     printf "\e[32mDone!\n\e[0m"
 fi
+
+
 
 
 while [[ -n "$1" ]]; do
@@ -121,9 +116,9 @@ while [[ -n "$1" ]]; do
             shift;
             LAVALINK_DIR="$1";
             [[ -d "$LAVALINK_DIR" ]] ||
-                >&2 printf "Invalid Lavalink directory!\n" && exit 1;
+                >&2 printf "\e[31mInvalid Lavalink directory!\n\e[0m" && exit 1;
             [[ -f "${LAVALINK_DIR}/Lavalink.jar" ]] ||
-                >&2 printf "No Lavalink.jar found in %s!\n" "$LAVALINK_DIR" && exit 1;
+                >&2 printf "\e[31mNo Lavalink.jar found in %s!\n\e[0m" "$LAVALINK_DIR" && exit 1;
             printf "Using Lavalink directory: %s\n" "$LAVALINK_DIR"
             shift;
             exit 0;
@@ -136,29 +131,26 @@ if [[ -z "$LAVALINK_DIR" ]]; then LAVALINK_DIR="./Lavalink"; fi
 
 
 if ! check_vars; then
-    printf "Couldn't verify essential environment variables.\n" && exit 1
+    printf "\e[31mCouldn't verify essential environment variables.\n\e[0m" && exit 1
 fi
 
-if ! source ./venv/bin/activate; then
-    printf "Activation script not found at ./venv/bin/activate\n" 
-    printf "Searching for the activation script...\n"
-    SCRIPT="$(find . -name 'activate')" &&
-        printf "Activation script found at %s\n" "$SCRIPT" ||
-        printf "Couldn't find a virtual environment activation script. Aborting.\n" &&
-        exit 1
-    if ! source "$SCRIPT"; then
-        printf "There was a problem activating the virtual environment.\n" && exit 1
-    fi
-    printf "Activation script found at %s\n" "$SCRIPT"
+if ! source venv/bin/activate && ! source "$(find . -name 'activate')"; then
+    printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m"
+    exit 1
 fi
-printf "Virtual environment activated!\n"
+
+printf "\e[32mVirtual environment activated!\n\e[0m"
 
 if ! start_lavalink; then
-    printf "There was a problem starting Lavalink!\n" && exit 1
+    printf "\e[31mThere was a problem starting Lavalink!\n\e[0m" && exit 1
 fi
 
 if ! python3 -m kolbot; then
-    printf "There was a problem starting kolbot!\n" && exit 1
+    printf "\e[31mKolbot encountered a problem! Exiting...\n\e[0m" && exit 1
 fi
+
+# TODO: Listen for "Cannot connect to host" error message and handle it:
+# WARNING wavelink.websocket An unexpected error occurred while connecting Node(identifier=1FJkuhP7V1f4GujL, uri=http://0.0.0.0:2333, status=NodeStatus.CONNECTING, players=0) to Lavalink: 
+# "Cannot connect to host 0.0.0.0:2333 ssl:default [Connect call failed ('0.0.0.0', 2333)]"
 
 

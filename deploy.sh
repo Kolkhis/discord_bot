@@ -1,13 +1,67 @@
 #!/bin/bash
 # shellcheck disable=SC1090
 
+trap "[[ -f ./lavalink_pipe ]] && rm ./lavalink_pipe && exit 0 || exit 0" SIGINT
 
-[[ -f ./banner.txt ]] && dpkg -l | grep -q 'lolcat' 2>/dev/null &&
-    lolcat < ./banner.txt
-
-trap "[[ -f ./lavalink_pipe ]] && rm ./lavalink_pipe && exit 0" SIGINT
 
 declare LAVALINK_DIR
+declare VENV_ACTIVATION_SCRIPT
+VENV_ACTIVATION_SCRIPT=$(find . -name 'activate' -path './*env*/bin/*')
+
+while [[ -n "$1" ]]; do
+    case "$1" in
+        (-h|--help)
+            printf "Usage: %s [-h] [-l /path/to/Lavalink]\n" "$0";
+            printf "Options:\n"
+            printf "    -h, --help    \t\t\t Show this help message\n";
+            printf "    -l, --lavalink\t\t\t Path to Lavalink directory. If no directory\n";
+            printf "                  \t\t\t is specified, './Lavalink/' is used.\n"
+            exit 0;
+            ;;
+        (-l|--lavalink)
+            shift;
+            LAVALINK_DIR="$1";
+            [[ -d "$LAVALINK_DIR" ]] ||
+                >&2 printf "\e[31mInvalid Lavalink directory!\n\e[0m" && exit 1;
+            [[ -f "${LAVALINK_DIR}/Lavalink.jar" ]] ||
+                >&2 printf "\e[31mNo Lavalink.jar found in %s!\n\e[0m" "$LAVALINK_DIR" && exit 1;
+            printf "Using Lavalink directory: %s\n" "$LAVALINK_DIR"
+            shift;
+            exit 0;
+            ;;
+    esac
+done
+if [[ -z "$LAVALINK_DIR" ]]; then LAVALINK_DIR="./Lavalink"; fi
+
+
+if [[ ! -d $LAVALINK_DIR ]]; then
+    printf "\e[31mLavalink directory %s does not exist!\n\e[0m" "$LAVALINK_DIR"
+    if ! mkdir ./Lavalink; then
+        printf "\e[31mFailed to create Lavalink directory!\n\e[0m"
+        exit 1
+    fi
+fi
+
+if [[ ! -f "$LAVALINK_DIR/Lavalink.jar" ]]; then
+    printf "\e31mCouldn't find Lavalink.jar in %s!\n\e[0m" "$LAVALINK_DIR"
+    printf "Download Lavalink.jar from:\n"
+    printf "https://github.com/lavalink-devs/Lavalink/releases/download/4.0.3/Lavalink.jar\n"
+    exit 1
+fi
+
+if [[ ! -f "$LAVALINK_DIR/application.yml" ]]; then
+    printf "\e[31mCouldn't find application.yml (Lavalink config) in %s!\n\e[0m" "$LAVALINK_DIR"
+    printf "Attempting to download a default Lavalink config...\n"
+    if ! curl -fSsLo ./Lavalink/application.yml \
+        https://raw.githubusercontent.com/topi314/LavaSrc/master/application.example.yml
+        then
+            printf "\e[31mFailed to download Lavalink config!\n\e[0m"
+            exit 1
+    fi
+fi
+
+
+
 
 check_vars() {
     [[ -z "$XDG_CONFIG_HOME" ]] && XDG_CONFIG_HOME="$HOME/.config"
@@ -58,91 +112,80 @@ start_lavalink() {
 
 
 check_activation_script() {
-    ACTIVATION_SCRIPT=$(find . -name 'activate')
-    if ! grep -q -E "BOT_TOKEN|LAVALINK_PASS|OWNER_ID" "$ACTIVATION_SCRIPT" 2>/dev/null; then
-        printf "Setting up the activation script with the environment variables...\n"
-        cat >> ./venv/bin/activate <<- '_end_var_fix'
+    VENV_ACTIVATION_SCRIPT=$(find . -name 'activate')
+    if ! [[ -f "$VENV_ACTIVATION_SCRIPT" ]]; then
+        printf "No virtual environment found. Creating one...\n"
+        if ! python3 -m venv venv; then
+            printf "There was a problem creating the virtual environment.\n"
+            printf "Make sure you have %s and %s installed!\n" \
+                "python3-pip" \
+                "python3.10-venv (or later)"
+            return 1
+        fi
 
-            BOT_TOKEN="$(head -1 "$HOME/.config/discord/BOT_TOKEN")"
-            LAVALINK_PASS="$(head -1 "$HOME/.config/discord/LAVALINK_PASS")"
-            OWNER_ID="$(head -1 "$HOME/.config/discord/OWNER_ID")"
+        VENV_ACTIVATION_SCRIPT=$(find . -name 'activate' -path './venv/bin/*')
+        if ! source "$VENV_ACTIVATION_SCRIPT"; then
+            printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m"
+            return 1
+        fi
+        if ! pip install -r requirements.txt; then
+            printf "\e[31mThere was a problem installing the dependencies!\n\e[0m"
+            return 1
+        fi
+        printf "Setting up the activation script with the environment variables...\n"
+        cat <<- '_end_var_fix'  >> ./venv/bin/activate
+
+			BOT_TOKEN="$(head -1 "$HOME/.config/discord/BOT_TOKEN")"
+			LAVALINK_PASS="$(head -1 "$HOME/.config/discord/LAVALINK_PASS")"
+			OWNER_ID="$(head -1 "$HOME/.config/discord/OWNER_ID")"
+_end_var_fix
+        printf "\e[32mDone!\n\e[0m"
+
+    elif ! grep -q -E "BOT_TOKEN|LAVALINK_PASS|OWNER_ID" "$VENV_ACTIVATION_SCRIPT" 2>/dev/null; then
+        printf "Setting up the activation script with the environment variables...\n"
+        cat <<- '_end_var_fix' >> ./venv/bin/activate
+
+			BOT_TOKEN="$(head -1 "$HOME/.config/discord/BOT_TOKEN")"
+			LAVALINK_PASS="$(head -1 "$HOME/.config/discord/LAVALINK_PASS")"
+			OWNER_ID="$(head -1 "$HOME/.config/discord/OWNER_ID")"
 _end_var_fix
     fi
+
     return $?;
 }
 
 
-if [[ ! -d "./venv" ]] && ! find . -name 'activate'; then
-    printf "No virtual environment found. Creating one...\n"
-    if ! python3 -m venv venv; then
-        printf "There was a problem creating the virtual environment.\n"
-        printf "Make sure you have %s and %s installed!\n" \
-            "python3-pip" \
-            "python3.10-venv (or later)"
-        exit 1
-    fi
-    if ! source venv/bin/activate && source "$(find . -name 'activate')"; then
-        printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m"
-        exit 1
-    fi
-    if ! pip install -r requirements.txt; then
-        printf "\e[31mThere was a problem installing the dependencies!\n\e[0m"
-        exit 1
-    fi
-    printf "Setting up the activation script with the environment variables...\n"
-    cat >> ./venv/bin/activate <<- 'EOC'
 
-        BOT_TOKEN="$(head -1 "$HOME/.config/discord/BOT_TOKEN")"
-        LAVALINK_PASS="$(head -1 "$HOME/.config/discord/LAVALINK_PASS")"
-        OWNER_ID="$(head -1 "$HOME/.config/discord/OWNER_ID")"
-EOC
-    printf "\e[32mDone!\n\e[0m"
+
+
+# Banner
+[[ -f ./banner.txt ]] && dpkg -l | grep -q 'lolcat' 2>/dev/null &&
+    lolcat < ./banner.txt || [[ -f ./banner.txt ]] && cat ./banner.txt
+
+if ! check_activation_script; then
+    printf "\e[31mThere was a problem setting up the virtual environment.\n\e[0m" && exit 1
 fi
-
-
-
-
-while [[ -n "$1" ]]; do
-    case "$1" in
-        (-h|--help)
-            printf "Usage: %s [-h] [-l /path/to/Lavalink]\n" "$0";
-            printf "Options:\n"
-            printf "    -h, --help    \t\t\t Show this help message\n";
-            printf "    -l, --lavalink\t\t\t Path to Lavalink directory. If no directory\n";
-            printf "                  \t\t\t is specified, './Lavalink/' is used.\n"
-            exit 0;
-            ;;
-        (-l|--lavalink)
-            shift;
-            LAVALINK_DIR="$1";
-            [[ -d "$LAVALINK_DIR" ]] ||
-                >&2 printf "\e[31mInvalid Lavalink directory!\n\e[0m" && exit 1;
-            [[ -f "${LAVALINK_DIR}/Lavalink.jar" ]] ||
-                >&2 printf "\e[31mNo Lavalink.jar found in %s!\n\e[0m" "$LAVALINK_DIR" && exit 1;
-            printf "Using Lavalink directory: %s\n" "$LAVALINK_DIR"
-            shift;
-            exit 0;
-            ;;
-    esac
-done
-
-
-if [[ -z "$LAVALINK_DIR" ]]; then LAVALINK_DIR="./Lavalink"; fi
-
 
 if ! check_vars; then
     printf "\e[31mCouldn't verify essential environment variables.\n\e[0m" && exit 1
 fi
 
-if ! source venv/bin/activate && ! source "$(find . -name 'activate')"; then
-    printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m"
-    exit 1
+
+if ! source "$VENV_ACTIVATION_SCRIPT" && ! source "$(find . -name 'activate')"; then
+    printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m" && exit 1
 fi
 
 printf "\e[32mVirtual environment activated!\n\e[0m"
 
 if ! start_lavalink; then
     printf "\e[31mThere was a problem starting Lavalink!\n\e[0m" && exit 1
+fi
+
+if ! [[ -d "./logs" ]]; then
+    if ! mkdir ./logs; then
+        printf "Couldn't create a logs directory!\n"
+        exit 1
+    fi 
 fi
 
 if ! python3 -m kolbot; then

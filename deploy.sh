@@ -6,7 +6,7 @@ trap "[[ -f ./lavalink_pipe ]] && rm ./lavalink_pipe && exit 0 || exit 0" SIGINT
 
 declare LAVALINK_DIR
 declare VENV_ACTIVATION_SCRIPT
-VENV_ACTIVATION_SCRIPT=$(find . -name 'activate' -path './*env*/bin/*')
+VENV_ACTIVATION_SCRIPT=$(find . -name 'activate')
 
 while [[ -n "$1" ]]; do
     case "$1" in
@@ -160,7 +160,7 @@ _end_var_fix
 
 # Banner
 [[ -f ./banner.txt ]] && dpkg -l | grep -q 'lolcat' 2>/dev/null &&
-    lolcat < ./banner.txt || [[ -f ./banner.txt ]] && cat ./banner.txt
+    lolcat < ./banner.txt
 
 if ! check_activation_script; then
     printf "\e[31mThere was a problem setting up the virtual environment.\n\e[0m" && exit 1

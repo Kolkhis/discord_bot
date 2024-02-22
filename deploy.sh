@@ -35,27 +35,27 @@ if [[ -z "$LAVALINK_DIR" ]]; then LAVALINK_DIR="./Lavalink"; fi
 
 
 if [[ ! -d $LAVALINK_DIR ]]; then
-    printf "\e[31mLavalink directory %s does not exist!\n\e[0m" "$LAVALINK_DIR"
+    >&2 printf "\e[31mLavalink directory %s does not exist!\n\e[0m" "$LAVALINK_DIR"
     if ! mkdir ./Lavalink; then
-        printf "\e[31mFailed to create Lavalink directory!\n\e[0m"
+        >&2 printf "\e[31mFailed to create Lavalink directory!\n\e[0m"
         exit 1
     fi
 fi
 
 if [[ ! -f "$LAVALINK_DIR/Lavalink.jar" ]]; then
-    printf "\e31mCouldn't find Lavalink.jar in %s!\n\e[0m" "$LAVALINK_DIR"
+    >&2 printf "\e[31mCouldn't find Lavalink.jar in %s!\n\e[0m" "$LAVALINK_DIR"
     printf "Download Lavalink.jar from:\n"
     printf "https://github.com/lavalink-devs/Lavalink/releases/download/4.0.3/Lavalink.jar\n"
     exit 1
 fi
 
 if [[ ! -f "$LAVALINK_DIR/application.yml" ]]; then
-    printf "\e[31mCouldn't find application.yml (Lavalink config) in %s!\n\e[0m" "$LAVALINK_DIR"
+    >&2 printf "\e[31mCouldn't find application.yml (Lavalink config) in %s!\n\e[0m" "$LAVALINK_DIR"
     printf "Attempting to download a default Lavalink config...\n"
     if ! curl -fSsLo ./Lavalink/application.yml \
         https://raw.githubusercontent.com/topi314/LavaSrc/master/application.example.yml
         then
-            printf "\e[31mFailed to download Lavalink config!\n\e[0m"
+            >&2 printf "\e[31mFailed to download Lavalink config!\n\e[0m"
             exit 1
     fi
 fi
@@ -67,14 +67,14 @@ check_vars() {
     [[ -z "$XDG_CONFIG_HOME" ]] && XDG_CONFIG_HOME="$HOME/.config"
 
     if [[ ! -s "$XDG_CONFIG_HOME/discord/OWNER_ID" ]]; then
-        printf "No Discord Owner ID provided.\n \
+        >&2 printf "No Discord Owner ID provided.\n \
             Please provide an Owner ID in %s\n" \
             "$XDG_CONFIG_HOME/discord/OWNER_ID"
         return 1
     fi
 
     if [[ ! -s "$XDG_CONFIG_HOME/discord/LAVALINK_PASS" ]]; then
-        printf "\nNo Lavalink Password provided.\n \
+        >&2 printf "\nNo Lavalink Password provided.\n \
             Please provide a Lavalink Password in %s\n\
             It should also be specified in ./Lavalink/application.yml.\n" \
             "$XDG_CONFIG_HOME/discord/LAVALINK_PASS"
@@ -82,7 +82,7 @@ check_vars() {
     fi
 
     if [[ ! -s "$XDG_CONFIG_HOME/discord/BOT_TOKEN" ]]; then
-        printf "\nNo Discord Bot Token provided.\n \
+        >&2 printf "\nNo Discord Bot Token provided.\n \
             Please provide a Discord Bot Token in %s\n" \
             "$XDG_CONFIG_HOME/discord/BOT_TOKEN"
         return 1
@@ -116,8 +116,8 @@ check_activation_script() {
     if ! [[ -f "$VENV_ACTIVATION_SCRIPT" ]]; then
         printf "No virtual environment found. Creating one...\n"
         if ! python3 -m venv venv; then
-            printf "There was a problem creating the virtual environment.\n"
-            printf "Make sure you have %s and %s installed!\n" \
+            >&2 printf "\e[31mThere was a problem creating the virtual environment.\n\e[0m"
+            >&2 printf "Make sure you have %s and %s installed!\n" \
                 "python3-pip" \
                 "python3.10-venv (or later)"
             return 1
@@ -125,11 +125,11 @@ check_activation_script() {
 
         VENV_ACTIVATION_SCRIPT=$(find . -name 'activate' -path './venv/bin/*')
         if ! source "$VENV_ACTIVATION_SCRIPT"; then
-            printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m"
+            >&2 printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m"
             return 1
         fi
         if ! pip install -r requirements.txt; then
-            printf "\e[31mThere was a problem installing the dependencies!\n\e[0m"
+            >&2 printf "\e[31mThere was a problem installing the dependencies!\n\e[0m"
             return 1
         fi
         printf "Setting up the activation script with the environment variables...\n"
@@ -163,37 +163,41 @@ _end_var_fix
     lolcat < ./banner.txt
 
 if ! check_activation_script; then
-    printf "\e[31mThere was a problem setting up the virtual environment.\n\e[0m" && exit 1
+    >&2 printf "\e[31mThere was a problem setting up the virtual environment.\n\e[0m" && exit 1
 fi
 
 if ! check_vars; then
-    printf "\e[31mCouldn't verify essential environment variables.\n\e[0m" && exit 1
+    >&2 printf "\e[31mCouldn't verify essential environment variables.\n\e[0m" && exit 1
 fi
 
 
 if ! source "$VENV_ACTIVATION_SCRIPT" && ! source "$(find . -name 'activate')"; then
-    printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m" && exit 1
+    >&2 printf "\e[31mThere was a problem activating the virutal environment!\n\e[0m" && exit 1
 fi
 
 printf "\e[32mVirtual environment activated!\n\e[0m"
 
 if ! start_lavalink; then
-    printf "\e[31mThere was a problem starting Lavalink!\n\e[0m" && exit 1
+    >&2 printf "\e[31mThere was a problem starting Lavalink!\n\e[0m" && exit 1
 fi
 
 if ! [[ -d "./logs" ]]; then
     if ! mkdir ./logs; then
-        printf "Couldn't create a logs directory!\n"
+        >&2 printf "Couldn't create a logs directory!\n"
         exit 1
     fi 
 fi
 
 if ! python3 -m kolbot; then
-    printf "\e[31mKolbot encountered a problem! Exiting...\n\e[0m" && exit 1
+    >&2 printf "\e[31mKolbot encountered a problem! Exiting...\n\e[0m" && exit 1
 fi
 
 # TODO: Listen for "Cannot connect to host" error message and handle it:
 # WARNING wavelink.websocket An unexpected error occurred while connecting Node(identifier=1FJkuhP7V1f4GujL, uri=http://0.0.0.0:2333, status=NodeStatus.CONNECTING, players=0) to Lavalink: 
 # "Cannot connect to host 0.0.0.0:2333 ssl:default [Connect call failed ('0.0.0.0', 2333)]"
+#   * Create a named pipe to kolbot, copying stdout and stderr to it.
+#   * Listen through the named pipe (helper script? backgrounded function process?)
+#   * Exit kolbot if the pipe receives the error message.
+#   * Listen for "Cannot connect to host" or "Connect call failed" in the named pipe.  
 
 

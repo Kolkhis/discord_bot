@@ -1,6 +1,7 @@
 # .gitignore from:
 # https://raw.githubusercontent.com/github/gitignore/main/Python.gitignore
 
+t.sh
 *.yml
 Lavalink/
 # Byte-compiled / optimized / DLL files
